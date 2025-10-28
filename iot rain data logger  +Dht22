@@ -1,0 +1,105 @@
+#include <ESP8266WiFi.h>
+#include <DHT.h>
+
+// ------------------- WiFi Config -------------------
+const char* ssid     = "Divya sree";     // 🔹 Replace with your WiFi SSID
+const char* password = "lavadivya"; // 🔹 Replace with your WiFi Password
+
+// ------------------- Sensor Config -----------------
+#define DHTPIN D4
+#define DHTTYPE DHT22   // Change to DHT11 if you use DHT11
+#define RAIN_PIN A0     // Rain Sensor AO → A0
+
+DHT dht(DHTPIN, DHTTYPE);
+WiFiServer server(80);
+
+void setup() {
+  Serial.begin(115200);
+  dht.begin();
+
+  Serial.println(" IoT Rain Data Logger - Live Webserver");
+
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  
+  Serial.println("\n✅ WiFi Connected!");
+  Serial.print("🌐 ESP8266 IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  server.begin();
+}
+
+void loop() {
+  WiFiClient client = server.available();
+  if (!client) return;
+
+  while (!client.available()) { delay(1); }
+  String request = client.readStringUntil('\r');
+  client.flush();
+
+  // --------- Serve JSON for AJAX requests ----------
+  if (request.indexOf("/data") != -1) {
+    float humidity = dht.readHumidity();
+    float temperature = dht.readTemperature();
+    int rainValue = analogRead(RAIN_PIN);
+
+    String rainStatus;
+    if (rainValue > 800) {
+      rainStatus = " No Rain";
+    } else if (rainValue > 400) {
+      rainStatus = " Medium Rain";
+    } else {
+      rainStatus = " Heavy Rain";
+    }
+
+    String json = "{";
+    json += "\"temperature\":" + String(temperature) + ",";
+    json += "\"humidity\":" + String(humidity) + ",";
+    json += "\"rainValue\":" + String(rainValue) + ",";
+    json += "\"rainStatus\":\"" + rainStatus + "\"";
+    json += "}";
+
+    client.println("HTTP/1.1 200 OK");
+    client.println("Content-Type: application/json");
+    client.println("Connection: close");
+    client.println();
+    client.println(json);
+    return;
+  }
+
+  // --------- Serve Main Webpage ----------
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/html");
+  client.println("Connection: close");
+  client.println();
+  client.println("<!DOCTYPE html><html>");
+  client.println("<head><meta charset='UTF-8'><title>IoT Rain Logger</title>");
+  client.println("<style>");
+  client.println("body { font-family: Arial; text-align:center; background:#f2f2f2; }");
+  client.println("table { width:80%; margin:auto; border-collapse:collapse; font-size:16px; }");
+  client.println("th, td { border:1px solid #555; padding:8px; }");
+  client.println("th { background:#222; color:white; }");
+  client.println("</style>");
+  client.println("<script>");
+  client.println("function fetchData(){");
+  client.println("fetch('/data').then(r=>r.json()).then(data=>{");
+  client.println("let table=document.getElementById('log');");
+  client.println("let row=table.insertRow(1);");
+  client.println("row.insertCell(0).innerHTML=data.temperature+' °C';");
+  client.println("row.insertCell(1).innerHTML=data.humidity+' %';");
+  client.println("row.insertCell(2).innerHTML=data.rainValue;");
+  client.println("row.insertCell(3).innerHTML=data.rainStatus;");
+  client.println("});}");
+  client.println("setInterval(fetchData,3000);"); // every 3 sec
+  client.println("</script></head>");
+  client.println("<body>");
+  client.println("<h2> IoT Rain Data Logger - Live Weather Records</h2>");
+  client.println("<table id='log'>");
+  client.println("<tr><th>Temperature</th><th>Humidity</th><th>Rain Value</th><th>Rain Status</th></tr>");
+  client.println("</table>");
+  client.println("<p>Data updates automatically every 3 seconds (no refresh).</p>");
+  client.println("</body></html>");
+}
