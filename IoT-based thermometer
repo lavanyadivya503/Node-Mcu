@@ -1,0 +1,89 @@
+#include <ESP8266WiFi.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+// Wi-Fi credentials
+const char* ssid = "YOUR_WIFI_NAME";
+const char* password = "YOUR_WIFI_PASSWORD";
+
+// DS18B20 connections
+#define ONE_WIRE_BUS D4  // Data pin
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+
+// LED and Buzzer pins
+#define LED_PIN D6
+#define BUZZER_PIN D7
+
+// Temperature limit
+float tempLimit = 30.0;
+
+WiFiServer server(80);
+
+void setup() {
+  Serial.begin(115200);
+  delay(10);
+
+  sensors.begin();
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+  digitalWrite(BUZZER_PIN, LOW);
+
+  // Connect to Wi-Fi
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nWiFi connected!");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  server.begin();
+}
+
+void loop() {
+  sensors.requestTemperatures();
+  float temperature = sensors.getTempCByIndex(0);
+  
+  // Check temperature limit
+  if (temperature > tempLimit) {
+    digitalWrite(LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH);
+  } else {
+    digitalWrite(LED_PIN, LOW);
+    digitalWrite(BUZZER_PIN, LOW);
+  }
+
+  WiFiClient client = server.available();
+  if (!client) return;
+
+  Serial.println("New client connected");
+  String request = client.readStringUntil('\r');
+  client.flush();
+
+  // Web page content
+  String html = "<!DOCTYPE html><html>";
+  html += "<head><meta http-equiv='refresh' content='3' />";
+  html += "<title>Temperature Monitor</title>";
+  html += "<style>body{font-family:Arial;text-align:center;background:#f2f2f2;}";
+  html += "h1{color:#333;} .temp{font-size:48px;color:#ff5722;}</style></head>";
+  html += "<body><h1>ESP8266 Temperature Monitor</h1>";
+  html += "<p class='temp'>Temperature: ";
+  html += String(temperature);
+  html += " °C</p>";
+  html += "<p>Status: ";
+  html += (temperature > tempLimit) ? "<b style='color:red;'>HIGH ⚠️</b>" : "<b style='color:green;'>Normal ✅</b>";
+  html += "</p></body></html>";
+
+  client.print("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n");
+  client.print(html);
+  delay(100);
+  client.stop();
+}
