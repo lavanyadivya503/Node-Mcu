@@ -1,0 +1,103 @@
+#include <ESP8266WiFi.h>
+
+// 🏠 WiFi Credentials
+const char* ssid = "Your_WiFi_Name";
+const char* password = "Your_WiFi_Password";
+
+// 🌍 Start web server on port 80
+WiFiServer server(80);
+
+// 🔌 Pin configuration
+const int trigPin = D1;
+const int echoPin = D2;
+const int waterPin = A0;
+const int alertPin = D5;
+
+// ⚙️ Variables
+long duration;
+float distance;
+int waterValue;
+
+// Set your tank distance limits (in cm)
+int fullLevel = 10;     // Distance when tank is full
+int emptyLevel = 30;    // Distance when tank is empty
+int waterThreshold = 500;  // Adjust for water sensor sensitivity
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+  pinMode(alertPin, OUTPUT);
+  pinMode(waterPin, INPUT);
+
+  // Connect to WiFi
+  Serial.println("Connecting to WiFi...");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  server.begin();
+}
+
+void loop() {
+  // Measure ultrasonic distance
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  duration = pulseIn(echoPin, HIGH);
+  distance = duration * 0.034 / 2; // Convert to cm
+
+  // Read water sensor
+  waterValue = analogRead(waterPin);
+
+  // Determine alert condition
+  bool waterDetected = (waterValue > waterThreshold);
+  bool tankFull = (distance <= fullLevel);
+
+  if (tankFull || waterDetected) {
+    digitalWrite(alertPin, HIGH);
+  } else {
+    digitalWrite(alertPin, LOW);
+  }
+
+  // Serve webpage
+  WiFiClient client = server.available();
+  if (!client) return;
+  while (!client.available()) delay(1);
+
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/html");
+  client.println("Connection: close");
+  client.println();
+  client.println("<!DOCTYPE html>");
+  client.println("<html>");
+  client.println("<head><title>Smart Water Level Monitor</title>");
+  client.println("<meta http-equiv='refresh' content='3'/>");
+  client.println("<style>");
+  client.println("body{font-family:Arial;text-align:center;background:#f0f8ff;}");
+  client.println("h1{color:#0077cc;} .box{margin:auto;width:50%;padding:20px;border-radius:15px;background:white;box-shadow:0px 0px 10px #ccc;}");
+  client.println("</style></head>");
+  client.println("<body><div class='box'>");
+  client.println("<h1> Smart Water Level Monitor</h1>");
+  client.print("<p><b>Distance:</b> "); client.print(distance); client.println(" cm</p>");
+  client.print("<p><b>Water Sensor Value:</b> "); client.print(waterValue); client.println("</p>");
+  
+  if (tankFull) {
+    client.println("<p style='color:red;font-size:20px;'>Tank is FULL!</p>");
+  } else if (waterDetected) {
+    client.println("<p style='color:orange;font-size:20px;'> Water detected on surface!</p>");
+  } else {
+    client.println("<p style='color:green;font-size:20px;'>✅ Normal Condition</p>");
+  }
+  
+  client.println("</div></body></html>");
+  client.stop();
+  delay(100);
+}
