@@ -1,0 +1,95 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+
+#define TRIG_PIN D3
+#define ECHO_PIN D2
+#define LED_PIN D6
+#define BUZZER_PIN D7
+
+// 🔹 Replace with your WiFi credentials
+const char* ssid = "Divya sree";
+const char* password = "lavadivya";
+
+ESP8266WebServer server(80);
+
+long duration;
+int distance;
+String alarmStatus = "Safe";
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nWiFi Connected!");
+  Serial.print("NodeMCU IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  server.on("/", handleRoot);
+  server.begin();
+  Serial.println("Web Server started.");
+}
+
+void loop() {
+  server.handleClient();
+  measureDistance();
+  updateAlarm();
+  delay(1000);
+}
+
+void measureDistance() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  duration = pulseIn(ECHO_PIN, HIGH);
+  distance = duration * 0.034 / 2;
+  Serial.print("Distance: ");
+  Serial.print(distance);
+  Serial.println(" cm");
+}
+
+void updateAlarm() {
+  if (distance > 0 && distance <= 15) {
+    digitalWrite(LED_PIN, HIGH);
+    digitalWrite(BUZZER_PIN, HIGH);
+    alarmStatus = "ALERT! Object Near";
+  } else {
+    digitalWrite(LED_PIN, LOW);
+    digitalWrite(BUZZER_PIN, LOW);
+    alarmStatus = " Safe";
+  }
+}
+
+// HTML page with neat table
+void handleRoot() {
+  String html = "<!DOCTYPE html><html><head><meta http-equiv='refresh' content='2'>";
+  html += "<title>Smart Door Alarm</title>";
+  html += "<style>";
+  html += "body{font-family:Arial;text-align:center;background:#f0f9ff;}";
+  html += "h2{color:#003366;}";
+  html += "table{margin:auto;border-collapse:collapse;width:60%;}";
+  html += "th,td{padding:10px;border:1px solid #003366;font-size:18px;}";
+  html += "th{background:#0077cc;color:white;}";
+  html += "td{background:white;}";
+  html += "</style></head><body>";
+  html += "<h2> Smart Door Alarm System</h2>";
+  html += "<table>";
+  html += "<tr><th>Object</th><th>Distance (cm)</th><th>Alarm Status</th></tr>";
+  html += "<tr><td>Front of Door</td><td>" + String(distance) + "</td><td>" + alarmStatus + "</td></tr>";
+  html += "</table>";
+  html += "<p>Page updates every 2 seconds automatically.</p>";
+  html += "</body></html>";
+
+  server.send(200, "text/html", html);
+}
