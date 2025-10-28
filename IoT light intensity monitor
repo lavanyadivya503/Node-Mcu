@@ -1,0 +1,64 @@
+#include <ESP8266WiFi.h>
+
+// --- WiFi Credentials ---
+const char* ssid = "YourWiFiName";       // 🔹 Enter your WiFi name
+const char* password = "YourWiFiPassword"; // 🔹 Enter your WiFi password
+
+WiFiServer server(80);
+
+void setup() {
+  Serial.begin(115200);
+  delay(10);
+
+  Serial.println();
+  Serial.println("Connecting to WiFi...");
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.print("Web Server IP: ");
+  Serial.println(WiFi.localIP());
+
+  server.begin();
+}
+
+void loop() {
+  WiFiClient client = server.available();
+  if (!client) return;
+
+  // Wait for client data
+  while (!client.available()) delay(1);
+
+  // Read LDR Value
+  int ldrValue = analogRead(A0);
+  String lightStatus;
+
+  if (ldrValue < 400)
+    lightStatus = " Dark";
+  else
+    lightStatus = " Bright";
+
+  // Prepare Web Page
+  String html = "<!DOCTYPE html><html>";
+  html += "<head><meta http-equiv='refresh' content='2'/>";
+  html += "<title>LDR Light Monitor</title>";
+  html += "<style>body{font-family:Arial;text-align:center;background:#f7f7f7;}";
+  html += "h1{color:#0066cc;} .value{font-size:30px;}</style></head>";
+  html += "<body><h1>ESP8266 LDR Light Monitor</h1>";
+  html += "<p class='value'>LDR Value: " + String(ldrValue) + "</p>";
+  html += "<p class='value'>Light Status: <b>" + lightStatus + "</b></p>";
+  html += "</body></html>";
+
+  // Send Response
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/html");
+  client.println("Connection: close");
+  client.println();
+  client.println(html);
+  delay(1);
+}
