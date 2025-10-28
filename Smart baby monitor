@@ -1,0 +1,87 @@
+#include <ESP8266WiFi.h>
+
+// Replace with your WiFi credentials
+const char* ssid = "Your_WiFi_Name";
+const char* password = "Your_WiFi_Password";
+
+WiFiServer server(80);
+
+// Pin setup
+const int soundPin = A0;
+const int ledPin = D2;
+const int buzzerPin = D5;
+
+// Sound threshold (adjust as needed)
+int threshold = 400;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(soundPin, INPUT);
+  pinMode(ledPin, OUTPUT);
+  pinMode(buzzerPin, OUTPUT);
+  
+  // Start WiFi
+  Serial.println("Connecting to WiFi...");
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected!");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+  
+  // Start the web server
+  server.begin();
+}
+
+void loop() {
+  int soundValue = analogRead(soundPin);
+  Serial.println(soundValue);
+
+  WiFiClient client = server.available();
+  if (!client) return;
+
+  // Check sound level
+  if (soundValue > threshold) {
+    digitalWrite(ledPin, HIGH);
+    digitalWrite(buzzerPin, HIGH);
+  } else {
+    digitalWrite(ledPin, LOW);
+    digitalWrite(buzzerPin, LOW);
+  }
+
+  // Wait for client request
+  while (!client.available()) {
+    delay(1);
+  }
+
+  // Respond with webpage
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/html");
+  client.println("Connection: close");
+  client.println();
+  client.println("<!DOCTYPE html>");
+  client.println("<html>");
+  client.println("<head><title>Baby Cry Detector</title>");
+  client.println("<meta http-equiv='refresh' content='2'>");
+  client.println("<style>body{font-family:Arial;text-align:center;}h1{color:#0080FF;}p{font-size:20px;}</style>");
+  client.println("</head>");
+  client.println("<body>");
+  client.println("<h1>Smart Baby Cry Detector</h1>");
+  client.print("<p>Sound Level: <b>");
+  client.print(soundValue);
+  client.println("</b></p>");
+  
+  if (soundValue > threshold) {
+    client.println("<p style='color:red;'>🚨 Baby is crying or loud noise detected!</p>");
+  } else {
+    client.println("<p style='color:green;'>😊 Quiet and calm environment</p>");
+  }
+
+  client.println("</body></html>");
+  delay(100);
+}
