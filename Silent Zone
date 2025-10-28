@@ -1,0 +1,57 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+const char* ssid = "YourWiFiName";        // 🔹 Replace with your WiFi SSID
+const char* password = "YourWiFiPassword"; // 🔹 Replace with your WiFi Password
+#define SOUND_DO D2   // Sound Sensor Digital Output
+#define SOUND_AO A0   // Optional Analog Output
+#define LED_PIN  D1   // LED Indicator
+#define BUZZER   D5   // Buzzer Pin
+ESP8266WebServer server(80);
+void setup() {
+  Serial.begin(115200);
+  pinMode(SOUND_DO, INPUT);
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(BUZZER, OUTPUT);
+
+WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+ Serial.println();
+  Serial.println("WiFi Connected!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+server.on("/", handleRoot);
+  server.begin();
+  Serial.println("Web Server started!");
+}
+
+void loop() {
+  server.handleClient();
+int soundState = digitalRead(SOUND_DO);
+  if (soundState == HIGH) {
+    digitalWrite(LED_PIN, HIGH);
+    digitalWrite(BUZZER, HIGH);
+  } else {
+    digitalWrite(LED_PIN, LOW);
+    digitalWrite(BUZZER, LOW);
+  }
+}
+void handleRoot() {
+  int soundState = digitalRead(SOUND_DO);
+  int analogValue = analogRead(SOUND_AO);  // Optional use of AO pin
+ String html = "<html><head><title>Silent Zone Detector</title>";
+  html += "<meta http-equiv='refresh' content='3'></head><body>";
+  html += "<h2>Silent Zone Detector - ESP8266</h2>";
+if (soundState == HIGH) {
+    html += "<h3 style='color:red;'>Noise Detected!</h3>";
+  } else {
+    html += "<h3 style='color:green;'> Silent</h3>";
+  }
+  html += "<p>Analog Sound Level: " + String(analogValue) + "</p>";
+  html += "<p>Page auto-refreshes every 3 seconds.</p>";
+  html += "</body></html>";
+server.send(200, "text/html", html);
+}
