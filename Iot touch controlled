@@ -1,0 +1,96 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+
+const char* ssid = "Divya sree";      // 🔹 Enter your WiFi name
+const char* password = "lavadivya";  // 🔹 Enter your WiFi password
+
+ESP8266WebServer server(80);
+
+int touchPin = D5;
+int redLED = D6;
+int greenLED = D7;
+int blueLED = D8;
+
+int touchState = 0;
+int lastState = 0;
+int colorMode = 0;
+
+void setup() {
+  pinMode(touchPin, INPUT);
+  pinMode(redLED, OUTPUT);
+  pinMode(greenLED, OUTPUT);
+  pinMode(blueLED, OUTPUT);
+
+  Serial.begin(115200);
+  WiFi.begin(ssid, password);
+
+  Serial.print("Connecting to WiFi...");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nConnected!");
+  Serial.print("ESP8266 IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  // Web page route
+  server.on("/", handleRoot);
+  server.begin();
+  Serial.println("Web server started.");
+}
+
+void loop() {
+  server.handleClient();
+
+  touchState = digitalRead(touchPin);
+  if (touchState == HIGH && lastState == LOW) {
+    colorMode++;
+    if (colorMode > 4) colorMode = 1;
+    setColor(colorMode);
+    delay(300);
+  }
+  lastState = touchState;
+}
+
+void setColor(int mode) {
+  digitalWrite(redLED, LOW);
+  digitalWrite(greenLED, LOW);
+  digitalWrite(blueLED, LOW);
+
+  switch (mode) {
+    case 1:
+      digitalWrite(redLED, HIGH);
+      break;
+    case 2:
+      digitalWrite(blueLED, HIGH);
+      break;
+    case 3:
+      digitalWrite(greenLED, HIGH);
+      break;
+    case 4:
+      // All OFF
+      break;
+  }
+}
+
+String currentColor() {
+  switch (colorMode) {
+    case 1: return " Red";
+    case 2: return " Blue";
+    case 3: return " Green";
+    default: return " OFF";
+  }
+}
+
+void handleRoot() {
+  String html = "<!DOCTYPE html><html><head><meta http-equiv='refresh' content='1'>";
+  html += "<title>Touch-Controlled Night Lamp</title>";
+  html += "<style>body{font-family:Arial;text-align:center;background:#111;color:white;}h1{color:#00ffff;}table{margin:auto;border-collapse:collapse;}td{padding:10px;border:1px solid #555;}</style></head><body>";
+  html += "<h1> Touch-Controlled Night Lamp</h1>";
+  html += "<table><tr><td><b>WiFi IP</b></td><td>" + WiFi.localIP().toString() + "</td></tr>";
+  html += "<tr><td><b>LED Color</b></td><td>" + currentColor() + "</td></tr></table>";
+  html += "<p>Touch the sensor to change the color!</p></body></html>";
+
+  server.send(200, "text/html", html);
+}
