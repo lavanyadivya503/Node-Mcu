@@ -1,0 +1,61 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+
+const char* ssid = "Divya sree";      // 🔹 Change this
+const char* password = "lavadivya";  // 🔹 Change this
+
+ESP8266WebServer server(80);
+
+const int LDR_PIN = A0;
+
+String getLightLevel(int percent) {
+  if (percent <= 33) return " Rainy / Night";
+  else if (percent <= 66) return " Cloudy";
+  else return " Sunny";
+}
+
+void handleRoot() {
+  int raw = analogRead(LDR_PIN);                // 0–1023
+  int percent = map(raw, 0, 1023, 0, 100);      // Convert to %
+
+  String page = "<!DOCTYPE html><html><head>"
+                "<meta http-equiv='refresh' content='1'>"   // Auto refresh 1s
+                "<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
+                "<style>"
+                "body{font-family:Arial;text-align:center;}"
+                "table{margin:auto;border-collapse:collapse;width:320px;}"
+                "th,td{border:1px solid #888;padding:8px;}"
+                "th{background:#eee;}"
+                ".big{font-weight:bold;font-size:1.2em;}"
+                "</style></head><body>";
+
+  page += "<h2>Illusion Weather Station</h2>";
+  page += "<table>";
+  page += "<tr><th>Parameter</th><th>Value</th></tr>";
+  page += "<tr><td>Light (ADC)</td><td>" + String(raw) + "</td></tr>";
+  page += "<tr><td>Light (%)</td><td>" + String(percent) + "%</td></tr>";
+  page += "<tr><td>Weather</td><td class='big'>" + getLightLevel(percent) + "</td></tr>";
+  page += "</table>";
+
+  page += "</body></html>";
+
+  server.send(200, "text/html", page);
+}
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500); Serial.print(".");
+  }
+  Serial.println("\nConnected! IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  server.on("/", handleRoot);
+  server.begin();
+}
+
+void loop() {
+  server.handleClient();
+}
