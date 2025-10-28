@@ -1,0 +1,100 @@
+#include <ESP8266WiFi.h>
+
+// Replace with your WiFi credentials
+const char* ssid = "YOUR_SSID";
+const char* password = "YOUR_PASSWORD";
+
+// Ultrasonic Sensor Pins
+#define TRIG_PIN D5
+#define ECHO_PIN D6
+
+WiFiServer server(80);
+
+long duration;
+int distance;
+
+// Store last 10 readings
+const int maxReadings = 10;
+int readings[maxReadings];
+int index = 0;
+bool filled = false;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  // Connect to Wi-Fi
+  Serial.println("Connecting to WiFi...");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi Connected!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  server.begin();
+}
+
+void loop() {
+  // Measure distance
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  duration = pulseIn(ECHO_PIN, HIGH);
+  distance = duration * 0.034 / 2; // Convert to cm
+
+  // Store reading
+  readings[index] = distance;
+  index++;
+  if (index >= maxReadings) {
+    index = 0;
+    filled = true;
+  }
+
+  // Handle webserver
+  WiFiClient client = server.available();
+  if (client) {
+    String request = client.readStringUntil('\r');
+    client.flush();
+
+    // Send HTML page with table
+    client.println("HTTP/1.1 200 OK");
+    client.println("Content-Type: text/html");
+    client.println("Connection: close");
+    client.println();
+    client.println("<!DOCTYPE HTML>");
+    client.println("<html>");
+    client.println("<head><title>Ultrasonic Distance Log</title>");
+    client.println("<meta http-equiv='refresh' content='2'>"); // Auto refresh
+    client.println("<style>");
+    client.println("table {border-collapse: collapse; width: 60%; margin: auto;}");
+    client.println("th, td {border: 1px solid black; padding: 8px; text-align: center;}");
+    client.println("th {background-color: #4CAF50; color: white;}");
+    client.println("</style></head><body>");
+    client.println("<h2 style='text-align:center;'>Ultrasonic Sensor Readings (Last 10)</h2>");
+    client.println("<table>");
+    client.println("<tr><th>Reading No.</th><th>Distance (cm)</th></tr>");
+
+    int count = filled ? maxReadings : index;
+    for (int i = 0; i < count; i++) {
+      int pos = (index - count + i + maxReadings) % maxReadings;
+      client.print("<tr><td>");
+      client.print(i + 1);
+      client.print("</td><td>");
+      client.print(readings[pos]);
+      client.println(" cm</td></tr>");
+    }
+
+    client.println("</table>");
+    client.println("</body></html>");
+    delay(100);
+  }
+
+  delay(1000); // 1 second between readings
+}
