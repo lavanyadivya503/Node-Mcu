@@ -1,0 +1,133 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <WiFiUdp.h>
+#include <NTPClient.h>
+
+// ==== WiFi Credentials ====
+const char* ssid = "Divya sree";
+const char* password = "lavadivya";
+
+// ==== Pin Config ====
+#define FIRE_SENSOR D5   // Fire sensor digital pin
+#define BUZZER_PIN D6    // Buzzer pin
+
+ESP8266WebServer server(80);
+
+// ==== NTP Setup ====
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 19800, 60000); 
+// 19800 = +5:30 IST (adjust for your timezone)
+
+// ==== Logging ====
+String fireLog[20];  // store last 20 fire events
+int logIndex = 0;
+
+bool fireDetected = false;
+bool buzzerState = LOW;
+
+// ==== Web Page Template ====
+String webpage() {
+  String html = "<!DOCTYPE html><html><head><meta http-equiv='refresh' content='2'/>"
+                "<style>"
+                "body{font-family:Arial;text-align:center;background:#f7f7f7;}"
+                "table{margin:auto;border-collapse:collapse;width:80%;}"
+                "th,td{border:1px solid #444;padding:10px;font-size:16px;}"
+                "th{background:#222;color:#fff;}"
+                "td{background:#fff;}"
+                ".fire{color:red;font-weight:bold;}"
+                ".safe{color:green;font-weight:bold;}"
+                "</style></head><body>";
+
+  html += "<h2> ESP8266 Fire Detection System with Buzzer Logging</h2>";
+  
+  // Status Table
+  html += "<table><tr><th>Parameter</th><th>Value</th></tr>";
+  html += "<tr><td>Fire Sensor Status</td><td>";
+  if (fireDetected) {
+    html += "<span class='fire'> Fire Detected!</span>";
+  } else {
+    html += "<span class='safe'>Safe - No Fire</span>";
+  }
+  html += "</td></tr>";
+
+  html += "<tr><td>Buzzer Status</td><td>";
+  html += (buzzerState) ? "ON (SOUNDING)" : "OFF";
+  html += "</td></tr></table><br>";
+
+  // Fire Event Log
+  html += "<h3> Fire Event Log</h3>";
+  html += "<table><tr><th>#</th><th>Timestamp</th></tr>";
+  for (int i = 0; i < logIndex; i++) {
+    html += "<tr><td>" + String(i + 1) + "</td><td>" + fireLog[i] + "</td></tr>";
+  }
+  if (logIndex == 0) {
+    html += "<tr><td colspan='2'>No fire events recorded</td></tr>";
+  }
+  html += "</table></body></html>";
+  
+  return html;
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(FIRE_SENSOR, INPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
+
+  // WiFi Connection
+  Serial.print("Connecting to WiFi...");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi Connected!");
+  Serial.print("ESP8266 IP: ");
+  Serial.println(WiFi.localIP());
+
+  // Start NTP
+  timeClient.begin();
+
+  // Web server route
+  server.on("/", []() {
+    server.send(200, "text/html", webpage());
+  });
+  server.begin();
+  Serial.println("Web Server Started");
+}
+
+void loop() {
+  server.handleClient();
+  timeClient.update();
+
+  int fireStatus = digitalRead(FIRE_SENSOR);
+
+  if (fireStatus == LOW) { // LOW = Fire detected
+    if (!fireDetected) {
+      fireDetected = true;
+      logEvent();   // log only when fire just detected
+    }
+    buzzerState = HIGH;
+    digitalWrite(BUZZER_PIN, buzzerState);
+  } else {
+    fireDetected = false;
+    buzzerState = LOW;
+    digitalWrite(BUZZER_PIN, buzzerState);
+  }
+}
+
+// ==== Log Fire Event with Timestamp ====
+void logEvent() {
+  String t = timeClient.getFormattedTime();
+  if (logIndex < 20) {
+    fireLog[logIndex] = " Fire Detected at " + t;
+    logIndex++;
+  } else {
+    // Shift logs up when full
+    for (int i = 1; i < 20; i++) {
+      fireLog[i - 1] = fireLog[i];
+    }
+    fireLog[19] = " Fire Detected at " + t;
+  }
+  Serial.println(fireLog[logIndex - 1]);
+}
