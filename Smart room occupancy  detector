@@ -1,0 +1,83 @@
+#include <ESP8266WiFi.h>
+
+const char* ssid = "Your_WiFi_Name";
+const char* password = "Your_WiFi_Password";
+
+WiFiServer server(80);
+
+const int pirPin = D5;     // PIR sensor pin
+const int ledPin = D6;     // LED pin
+const int ldrPin = A0;     // LDR analog input
+
+int pirState = LOW;
+int ldrValue = 0;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(pirPin, INPUT);
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, LOW);
+
+  // Connect to Wi-Fi
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected.");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  server.begin();
+}
+
+void loop() {
+  WiFiClient client = server.available();
+
+  if (!client) {
+    return;
+  }
+
+  // Wait for client request
+  while (!client.available()) {
+    delay(1);
+  }
+
+  // Read sensor values
+  ldrValue = analogRead(ldrPin);
+  pirState = digitalRead(pirPin);
+
+  bool isDark = ldrValue < 600;   // Adjust this threshold as needed
+  bool motionDetected = (pirState == HIGH);
+
+  if (motionDetected && isDark) {
+    digitalWrite(ledPin, HIGH);
+  } else {
+    digitalWrite(ledPin, LOW);
+  }
+
+  // Generate web page
+  String html = "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'>";
+  html += "<style>body{font-family:Arial;text-align:center;background-color:#f2f2f2;}h1{color:#333;}div{margin:20px auto;padding:20px;background:#fff;border-radius:15px;box-shadow:0 0 10px rgba(0,0,0,0.1);}p{font-size:18px;}</style></head><body>";
+  html += "<h1>Smart Room Occupancy Detector</h1>";
+  html += "<div><p><b>Motion:</b> " + String(motionDetected ? "Detected" : "No Motion") + "</p>";
+  html += "<p><b>Light Level (LDR):</b> " + String(ldrValue) + "</p>";
+  html += "<p><b>Room Light:</b> " + String(isDark ? "Dark" : "Bright") + "</p>";
+  html += "<p><b>LED Status:</b> " + String(digitalRead(ledPin) ? "ON" : "OFF") + "</p></div>";
+  html += "</body></html>";
+
+  // Send response
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/html");
+  client.println("Connection: close");
+  client.println();
+  client.println(html);
+
+  delay(100);
+}
