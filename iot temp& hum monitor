@@ -1,0 +1,88 @@
+#include <ESP8266WiFi.h>
+#include <DHT.h>
+
+// ====== CHANGE YOUR WIFI ======
+const char* ssid = "Divya sree";
+const char* password = "lavadivya";
+// ==============================
+
+#define DHTPIN D4       // OUT pin of DHT22 → D4 on NodeMCU
+#define DHTTYPE DHT22
+DHT dht(DHTPIN, DHTTYPE);
+
+WiFiServer server(80);
+
+void setup() {
+  Serial.begin(115200);
+  dht.begin();
+
+  // Connect to WiFi
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\n✅ WiFi connected!");
+  Serial.print("🌐 NodeMCU IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  server.begin();
+}
+
+String getTemperatureStatus(float t) {
+  if (t < 20) return "❄️ Cool Environment";
+  else if (t >= 20 && t <= 28) return "🏠 Room Temperature (Comfortable)";
+  else if (t > 28 && t <= 35) return "🏠 Warm Room / Outside Shade";
+  else return "🌞 Outside Temperature (Hot Sun)";
+}
+
+String getHumidityStatus(float h) {
+  if (h < 40) return "🌵 Air is Dry";
+  else if (h >= 40 && h <= 70) return "👌 Humidity is Normal";
+  else return "💧 High Humidity! Air feels damp";
+}
+
+void loop() {
+  WiFiClient client = server.available();
+  if (!client) return;
+
+  while (!client.available()) {
+    delay(1);
+  }
+
+  // Read sensors
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+
+  // Create HTML page with 1-second auto-refresh
+  String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'>";
+  html += "<meta http-equiv='refresh' content='1'>";  // Refresh every 1 second
+  html += "<title>🌍 Environmental Monitoring</title>";
+  html += "<style>";
+  html += "body{font-family:Arial;text-align:center;background:#f4f4f4;}";
+  html += "table{border-collapse:collapse;width:60%;margin:auto;box-shadow:0 0 10px rgba(0,0,0,0.2);}";
+  html += "th,td{border:1px solid #333;padding:10px;font-size:18px;}";
+  html += "th{background:#4CAF50;color:white;}";
+  html += "</style></head><body>";
+  html += "<h2>🌡️💧 DHT22 Environmental Monitoring</h2>";
+  html += "<p>(Auto-refreshes every 1 second)</p>";
+  html += "<table>";
+  html += "<tr><th>Parameter</th><th>Value</th><th>Status</th></tr>";
+
+  if (isnan(h) || isnan(t)) {
+    html += "<tr><td colspan='3'>❌ Failed to read from DHT22 sensor!</td></tr>";
+  } else {
+    html += "<tr><td>Temperature</td><td>" + String(t, 1) + " °C</td><td>" + getTemperatureStatus(t) + "</td></tr>";
+    html += "<tr><td>Humidity</td><td>" + String(h, 1) + " %</td><td>" + getHumidityStatus(h) + "</td></tr>";
+  }
+
+  html += "</table></body></html>";
+
+  // Send response
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/html");
+  client.println("Connection: close");
+  client.println();
+  client.println(html);
+}
