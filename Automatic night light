@@ -1,0 +1,76 @@
+#include <ESP8266WiFi.>
+const char* ssid = "Divyalava";
+const char* password = "lavadivya";
+int ldrPin = A0;     // LDR connected to analog pin A0
+int ledPin = D2;     // LED connected to digital pin D2
+WiFiServer server(80); // Web server runs on port 80
+void setup() {
+  Serial.begin(115200);
+ pinMode(ledPin, OUTPUT);
+ // Connect to WiFi
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected.");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());  // Print assigned IP
+
+  // Start the server
+  server.begin();
+}
+
+void loop() {
+  WiFiClient client = server.available(); // Listen for incoming clients
+
+  if (!client) {
+    return;
+  }
+
+  // Wait until client sends data
+  while (!client.available()) {
+    delay(1);
+  }
+
+  // Read request
+  String request = client.readStringUntil('\r');
+  client.flush();
+
+  // LDR value
+  int ldrValue = analogRead(ldrPin);
+  String ledState = "";
+
+  // Check if browser request contains ON or OFF
+  if (request.indexOf("/LED=ON") != -1) {
+    digitalWrite(ledPin, HIGH);
+    ledState = "ON";
+  } else if (request.indexOf("/LED=OFF") != -1) {
+    digitalWrite(ledPin, LOW);
+    ledState = "OFF";
+  } else {
+    ledState = (digitalRead(ledPin) == HIGH) ? "ON" : "OFF";
+  }
+
+  // Send response (HTML page)
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/html");
+  client.println("Connection: close");
+  client.println();
+  client.println("<!DOCTYPE HTML>");
+  client.println("<html>");
+  client.println("<h2> NodeMCU LDR Web Server</h2>");
+  client.println("<p>LDR Value: " + String(ldrValue) + "</p>");
+  client.println("<p>LED State: " + ledState + "</p>");
+  client.println("<a href=\"/LED=ON\"><button>Turn ON LED</button></a>");
+  client.println("<a href=\"/LED=OFF\"><button>Turn OFF LED</button></a>");
+  client.println("</html>");
+
+  delay(1);
+}
