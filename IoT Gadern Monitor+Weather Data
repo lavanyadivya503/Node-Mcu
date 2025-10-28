@@ -1,0 +1,71 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <DHT.h>
+
+// --- Sensor Setup ---
+#define DHTPIN D4        // DHT22 connected to D4
+#define DHTTYPE DHT22
+#define SOIL_PIN A0      // Soil sensor analog output to A0
+
+DHT dht(DHTPIN, DHTTYPE);
+
+// --- WiFi Setup ---
+const char* ssid = "Your_WiFi_Name";
+const char* password = "Your_WiFi_Password";
+
+// --- Web Server ---
+ESP8266WebServer server(80);
+
+void handleRoot() {
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+  int soilValue = analogRead(SOIL_PIN);
+
+  String moistureLevel;
+  if (soilValue > 800) {
+    moistureLevel = "Dry";
+  } else if (soilValue > 400) {
+    moistureLevel = "Moderate";
+  } else {
+    moistureLevel = "Wet";
+  }
+
+  String html = "<!DOCTYPE html><html>";
+  html += "<head><meta name='viewport' content='width=device-width, initial-scale=1.0'>";
+  html += "<title>Smart Plant Monitor</title>";
+  html += "<style>";
+  html += "body { font-family: Arial; text-align:center; background:#e6ffe6; }";
+  html += "h1 { color: #006600; }";
+  html += "div.card { background:white; padding:20px; margin:10px; border-radius:15px; box-shadow:0px 0px 10px gray; }";
+  html += "</style></head>";
+  html += "<body><h1>🌿 Smart Plant Monitor</h1>";
+  html += "<div class='card'><h2>🌡 Temperature: " + String(t) + " °C</h2></div>";
+  html += "<div class='card'><h2>💧 Humidity: " + String(h) + " %</h2></div>";
+  html += "<div class='card'><h2>🌱 Soil Moisture: " + String(soilValue) + " (" + moistureLevel + ")</h2></div>";
+  html += "</body></html>";
+
+  server.send(200, "text/html", html);
+}
+
+void setup() {
+  Serial.begin(115200);
+  dht.begin();
+
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi...");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConnected!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  server.on("/", handleRoot);
+  server.begin();
+  Serial.println("Web Server Started");
+}
+
+void loop() {
+  server.handleClient();
+}
