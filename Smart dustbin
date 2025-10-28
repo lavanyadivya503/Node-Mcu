@@ -1,0 +1,100 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <Servo.h>
+
+// ------------------ WiFi Configuration ------------------
+const char* ssid = "Divya sree";       // 🔹 change this
+const char* password = "lavadivya";  // 🔹 change this
+
+ESP8266WebServer server(80);
+Servo dustbinServo;
+
+// ------------------ Pin Configuration ------------------
+const int trigPin = D5;   // Ultrasonic Trigger
+const int echoPin = D6;   // Ultrasonic Echo
+const int servoPin = D4;  // Servo signal
+
+// ------------------ Variables ------------------
+long duration;
+int distance;
+
+// ------------------ Measure Distance Function ------------------
+int getDistance() {
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  duration = pulseIn(echoPin, HIGH);
+  distance = duration * 0.034 / 2; // Convert to cm
+  return distance;
+}
+
+// ------------------ Web Page Content ------------------
+String webPage() {
+  int dist = getDistance();
+
+  String html = "<html><head><title>Smart Dustbin</title>";
+  html += "<meta http-equiv='refresh' content='2'>"; // auto-refresh every 2 sec
+  html += "<style>body{font-family:Arial;text-align:center;background:#f2f2f2;}";
+  html += "table{margin:auto;border-collapse:collapse;width:60%;}";
+  html += "th,td{border:1px solid #555;padding:10px;}";
+  html += "th{background-color:#04AA6D;color:white;}</style></head><body>";
+  html += "<h2> Smart Dustbin Monitoring System</h2>";
+  html += "<table><tr><th>Parameter</th><th>Value</th></tr>";
+  html += "<tr><td>Distance</td><td>" + String(dist) + " cm</td></tr>";
+
+  if (dist > 0 && dist <= 15) {
+    html += "<tr><td>Status</td><td><b style='color:green;'>Lid Open (Object Detected)</b></td></tr>";
+  } else {
+    html += "<tr><td>Status</td><td><b style='color:red;'>Lid Closed</b></td></tr>";
+  }
+
+  html += "</table><p>Auto-refresh every 2 seconds</p></body></html>";
+  return html;
+}
+
+// ------------------ Setup ------------------
+void setup() {
+  Serial.begin(9600);
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+  
+  dustbinServo.attach(servoPin);
+  dustbinServo.write(90);   // Lid starts closed (anticlockwise setup)
+  
+  // Connect WiFi
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConnected!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  // Setup web server
+  server.on("/", []() {
+    int dist = getDistance();
+
+    if (dist > 0 && dist <= 15) {
+      dustbinServo.write(0);   // Open lid (anticlockwise)
+      delay(2000);
+      dustbinServo.write(90);  // Close lid
+    } else {
+      dustbinServo.write(90);  // Keep closed
+    }
+
+    server.send(200, "text/html", webPage());
+  });
+
+  server.begin();
+  Serial.println("Web server started.");
+}
+
+// ------------------ Loop ------------------
+void loop() {
+  server.handleClient();
+}
