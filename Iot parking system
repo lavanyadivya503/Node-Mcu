@@ -1,0 +1,99 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+
+// 🔹 Replace with your WiFi credentials
+const char* ssid = "Your_WiFi_Name";
+const char* password = "Your_WiFi_Password";
+
+// 🔹 Pin definitions
+#define IR1 D5
+#define IR2 D6
+#define LED1 D7
+#define LED2 D8
+
+ESP8266WebServer server(80);
+
+// Slot status text
+String slot1, slot2;
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(IR1, INPUT);
+  pinMode(IR2, INPUT);
+  pinMode(LED1, OUTPUT);
+  pinMode(LED2, OUTPUT);
+
+  // Connect to Wi-Fi
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\n✅ Connected to WiFi");
+  Serial.print("🌐 IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  // Start web server
+  server.on("/", handleRoot);
+  server.begin();
+  Serial.println("Web Server Started");
+}
+
+void loop() {
+  server.handleClient();
+  updateStatus();
+}
+
+void updateStatus() {
+  int s1 = digitalRead(IR1);
+  int s2 = digitalRead(IR2);
+
+  // LOW means object detected (car present)
+  if (s1 == LOW) {
+    slot1 = " Occupied";
+    digitalWrite(LED1, HIGH);
+  } else {
+    slot1 = " Empty";
+    digitalWrite(LED1, LOW);
+  }
+
+  if (s2 == LOW) {
+    slot2 = " Occupied";
+    digitalWrite(LED2, HIGH);
+  } else {
+    slot2 = "Empty";
+    digitalWrite(LED2, LOW);
+  }
+}
+
+void handleRoot() {
+  String html = "<!DOCTYPE html><html><head><meta http-equiv='refresh' content='2'/>";
+  html += "<title>Smart Parking System</title>";
+  html += "<style>";
+  html += "body{background:#eef6ff;font-family:Arial;text-align:center;}";
+  html += "h1{color:#003366;}";
+  html += "table{margin:auto;border-collapse:collapse;width:60%;font-size:20px;}";
+  html += "th,td{border:1px solid #666;padding:15px;text-align:center;border-radius:8px;}";
+  html += "th{background:#003366;color:white;}";
+  html += "td{background:#ffffff;}";
+  html += "tr:nth-child(even){background:#f2f2f2;}";
+  html += "footer{margin-top:20px;font-size:14px;color:#555;}";
+  html += "</style></head><body>";
+  html += "<h1>🚘 Smart Parking System (2 Slots)</h1>";
+  html += "<table><tr><th>Parking Slot</th><th>Status</th></tr>";
+  html += "<tr><td>Slot 1</td><td>" + slot1 + "</td></tr>";
+  html += "<tr><td>Slot 2</td><td>" + slot2 + "</td></tr></table>";
+  
+  // Optional available slot counter
+  int available = 0;
+  if (slot1 == "Empty") available++;
+  if (slot2 == " Empty") available++;
+  
+  html += "<h2>Available Slots: " + String(available) + " / 2</h2>";
+  html += "<footer>Updated every 2 seconds</footer></body></html>";
+
+  server.send(200, "text/html", html);
+}
