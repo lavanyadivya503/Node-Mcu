@@ -1,0 +1,92 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <time.h>
+
+const char* ssid = "Divya sree";
+const char* password = "lavadivya";
+
+ESP8266WebServer server(80);
+
+#define PIR_PIN D5
+#define BUZZER_PIN D6
+
+struct Event {
+  String time;
+  String status;
+};
+
+Event logData[20];
+int logIndex = 0;
+int totalCount = 0;
+int lastMotion = LOW;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(PIR_PIN, INPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
+
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500); Serial.print(".");
+  }
+  Serial.println("\nConnected: " + WiFi.localIP().toString());
+
+  configTime(19800, 0, "pool.ntp.org", "time.nist.gov"); // IST
+  server.on("/", handleRoot);
+  server.begin();
+}
+
+void loop() {
+  server.handleClient();
+  checkPIR();
+}
+
+void checkPIR() {
+  int motion = digitalRead(PIR_PIN);
+  String status = (motion == HIGH) ? "Detected" : "No Motion";
+
+  if (motion == HIGH && lastMotion == LOW) {
+    totalCount++;
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(1000);
+    digitalWrite(BUZZER_PIN, LOW);
+  }
+
+  logMotion(status);
+  lastMotion = motion;
+  delay(500);
+}
+
+void logMotion(String status) {
+  time_t now = time(nullptr);
+  struct tm * timeinfo = localtime(&now);
+  char buf[9];
+  sprintf(buf, "%02d:%02d:%02d", timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+  String timestamp = String(buf);
+
+  logData[logIndex].time = timestamp;
+  logData[logIndex].status = status;
+  logIndex++;
+  if (logIndex >= 20) logIndex = 0;
+}
+
+void handleRoot() {
+  String html = "<!DOCTYPE html><html><head>";
+  html += "<meta http-equiv='refresh' content='1'>";
+  html += "<title>PIR Motion Logger</title>";
+  html += "<style>body{font-family:Arial;text-align:center;}table{margin:auto;border-collapse:collapse;}th,td{padding:10px;border:1px solid #333;}</style></head><body>";
+  html += "<h1> PIR Motion Logger</h1>";
+  html += "<h2>Total Detections: " + String(totalCount) + "</h2>";
+  html += "<table><tr><th>Timestamp</th><th>Motion Status</th></tr>";
+
+  for (int i = 0; i < 20; i++) {
+    if (logData[i].time != "") {
+      html += "<tr><td>" + logData[i].time + "</td><td>" + logData[i].status + "</td></tr>";
+    }
+  }
+
+  html += "</table></body></html>";
+  server.send(200, "text/html", html);
+}
