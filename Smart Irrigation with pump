@@ -1,0 +1,45 @@
+#define SOIL_PIN A0        // Soil Moisture analog pin
+#define RELAY_PIN D1       // Relay Control Pin (GPIO5)
+
+int soilValue = 0;
+int moisturePercent = 0;
+
+// Set moisture threshold (%). If below → Pump ON
+int dryThreshold = 40;  // Change as needed
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, HIGH);  // Relay OFF initially (Active LOW)
+
+  Serial.println("Soil Moisture Monitoring System Started...");
+  delay(1000);
+}
+
+void loop() {
+  soilValue = analogRead(SOIL_PIN);   // Read raw value (0–1023)
+  
+  // Convert to % (Customize if your values differ)
+  moisturePercent = map(soilValue, 1023, 300, 0, 100);
+
+  // Limit % within 0–100
+  moisturePercent = constrain(moisturePercent, 0, 100);
+
+  Serial.print("Raw Value: ");
+  Serial.print(soilValue);
+  Serial.print(" | Moisture: ");
+  Serial.print(moisturePercent);
+  Serial.println("%");
+
+  // Control Relay
+  if (moisturePercent < dryThreshold) {
+    digitalWrite(RELAY_PIN, LOW);   // Relay ON (Active LOW)
+    Serial.println("Status: Soil Dry → Pump ON");
+  } else {
+    digitalWrite(RELAY_PIN, HIGH);  // Relay OFF
+    Serial.println("Status: Soil Wet → Pump OFF");
+  }
+
+  Serial.println("-----------------------");
+  delay(2000);
+}
