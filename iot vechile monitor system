@@ -1,0 +1,101 @@
+#include <ESP8266WiFi.h>
+
+const char* ssid = "sivagnanam";     
+const char* password = "btsarmy1516"; 
+
+WiFiServer server(80);
+
+#define MQ135_PIN A0
+#define LED_PIN D1
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+
+  Serial.println();
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(ssid);
+
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println();
+  Serial.println("✅ WiFi connected!");
+  Serial.print("📡 IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  server.begin();
+  Serial.println("🌐 Web server started");
+}
+
+void loop() {
+  WiFiClient client = server.available();
+
+  int sensorValue = analogRead(MQ135_PIN);
+
+  float co = sensorValue * 0.1;
+  float co2 = sensorValue * 0.12;
+  float no2 = sensorValue * 0.08;
+
+  // Debug in Serial
+  Serial.print("CO: "); Serial.print(co);
+  Serial.print(" ppm | CO2: "); Serial.print(co2);
+  Serial.print(" ppm | NO2: "); Serial.println(no2);
+
+  if (sensorValue > 400) digitalWrite(LED_PIN, HIGH);
+  else digitalWrite(LED_PIN, LOW);
+
+  if (client) {
+    String html = "<!DOCTYPE html><html><head>";
+    html += "<meta http-equiv='refresh' content='1'>"; // Auto refresh every 1s
+    html += "<style>";
+    html += "body{font-family:Arial;text-align:center;}";
+    html += "table{margin:20px auto;border:2px solid black;border-collapse:collapse;width:300px;}";
+    html += "th,td{border:1px solid black;padding:10px;font-size:18px;}";
+    html += "th{background:#f2f2f2;}";
+    html += ".high{background:#ff4d4d;color:white;}";  // 🚨 red warning
+    html += ".normal{background:#d4edda;color:#155724;}"; // ✅ green normal
+    html += "</style></head><body>";
+
+    html += "<h2>🚗 Vehicle Gas Monitoring System</h2>";
+
+    // CO Table
+    html += "<table>";
+    html += "<tr><th colspan='2'>Carbon Monoxide (CO)</th></tr>";
+    html += "<tr><td>Value</td><td";
+    if (co > 400) html += " class='high'>"; else html += " class='normal'>";
+    html += String(co) + " ppm</td></tr></table>";
+
+    // CO2 Table
+    html += "<table>";
+    html += "<tr><th colspan='2'>Carbon Dioxide (CO2)</th></tr>";
+    html += "<tr><td>Value</td><td";
+    if (co2 > 400) html += " class='high'>"; else html += " class='normal'>";
+    html += String(co2) + " ppm</td></tr></table>";
+
+    // NO2 Table
+    html += "<table>";
+    html += "<tr><th colspan='2'>Nitrogen Dioxide (NO2)</th></tr>";
+    html += "<tr><td>Value</td><td";
+    if (no2 > 400) html += " class='high'>"; else html += " class='normal'>";
+    html += String(no2) + " ppm</td></tr></table>";
+
+    // Status Table
+    html += "<table>";
+    html += "<tr><th>Status</th><td";
+    if (sensorValue > 400) html += " class='high'>⚠️ HIGH</td></tr>";
+    else html += " class='normal'>✅ NORMAL</td></tr>";
+    html += "</table>";
+
+    html += "</body></html>";
+
+    client.print("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n");
+    client.print(html);
+    client.stop();
+  }
+}
