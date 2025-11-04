@@ -1,0 +1,80 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+
+// ================= WiFi Settings =================
+const char* ssid = "Divyasree";       // 🔹 Change this
+const char* password = "lavadivya";   // 🔹 Change this
+
+// ================= Pin Settings =================
+#define RAIN_DO D2     // Digital Output from rain sensor
+#define RAIN_AO A0     // Analog Output from rain sensor
+#define BUZZER  D5     // Buzzer pin
+
+ESP8266WebServer server(80);
+
+String rainfallStatus(int analogValue, int digitalValue) {
+  if (digitalValue == LOW) {  // When rain is detected
+    if (analogValue < 300) return " Heavy Rain";
+    else if (analogValue < 700) return " Medium Rain";
+    else return "Light Rain";
+  } else {
+    return " No Rain";
+  }
+}
+
+void handleRoot() {
+  int rainAnalog = analogRead(RAIN_AO);
+  int rainDigital = digitalRead(RAIN_DO);
+  String status = rainfallStatus(rainAnalog, rainDigital);
+
+  // ====== Control Buzzer ======
+  if (status == "🌧 Heavy Rain") {
+    digitalWrite(BUZZER, HIGH);
+  } else {
+    digitalWrite(BUZZER, LOW);
+  }
+
+  String html = "<!DOCTYPE html><html><head>"
+                "<meta http-equiv='refresh' content='1'/>"
+                "<title>IoT Rainfall Logger</title>"
+                "<style>"
+                "body{font-family:Arial;text-align:center;background:#eef;}"
+                "table{width:60%;margin:auto;border-collapse:collapse;}"
+                "th,td{border:1px solid #333;padding:10px;font-size:18px;}"
+                "th{background:#0077cc;color:white;}"
+                "</style></head><body>";
+  
+  html += "<h2> IoT Rainfall Logger</h2>";
+  html += "<table>";
+  html += "<tr><th>Analog Value</th><th>Digital Value</th><th>Rainfall Status</th></tr>";
+  html += "<tr><td>" + String(rainAnalog) + "</td><td>" + String(rainDigital) + "</td><td>" + status + "</td></tr>";
+  html += "</table>";
+  html += "<p>Page auto-refreshes every 1 sec ⏳</p>";
+  html += "</body></html>";
+
+  server.send(200, "text/html", html);
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(RAIN_DO, INPUT);
+  pinMode(BUZZER, OUTPUT);
+  digitalWrite(BUZZER, LOW);
+
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConnected! IP address: ");
+  Serial.println(WiFi.localIP());
+
+  server.on("/", handleRoot);
+  server.begin();
+  Serial.println("Web server started.");
+}
+
+void loop() {
+  server.handleClient();
+}
