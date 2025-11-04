@@ -1,0 +1,122 @@
+#include <ESP8266WiFi.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+
+// ===== WiFi credentials =====
+const char* ssid = "Divya sree";
+const char* password = "lavadivya";
+
+// ===== Pins =====
+#define TRIG_PIN D5
+#define ECHO_PIN D6
+#define BUZZER_PIN D2
+
+// ===== Server & Time =====
+WiFiServer server(80);
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 19800, 60000); // +5:30 IST offset
+
+String tableRows = "";
+int serialNumber = 0;
+
+// 📏 Measure distance
+int getDistance() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000); // timeout 30ms
+  if (duration == 0) return -1; // no reading
+  int distance = duration * 0.034 / 2;
+
+  if (distance <= 0 || distance > 400) return -1; // filter invalid
+  return distance;
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected. IP: " + WiFi.localIP().toString());
+
+  server.begin();
+  timeClient.begin();
+}
+
+void loop() {
+  timeClient.update();
+
+  int distance = getDistance();
+  if (distance == -1) return;  // skip invalid readings
+
+  String objectType = (distance < 20) ? "Obstacle" : "Clear";
+
+  // Buzzer control
+  digitalWrite(BUZZER_PIN, (objectType == "Obstacle") ? HIGH : LOW);
+
+  static unsigned long lastUpdate = 0;
+  if (millis() - lastUpdate > 2000) {
+    lastUpdate = millis();
+
+    serialNumber++;
+    String currentTime = timeClient.getFormattedTime();
+
+    String row = "<tr><td>" + String(serialNumber) + "</td><td>" + currentTime +
+                 "</td><td>" + String(distance) + " cm</td><td>" + objectType + "</td></tr>";
+    tableRows = row + tableRows;  // add newest row on top
+    Serial.println(row);
+  }
+
+  // === Handle Web Client ===
+  WiFiClient client = server.available();
+  if (client) {
+    String request = client.readStringUntil('\r');
+    client.flush();
+
+    // === Live update route ===
+    if (request.indexOf("GET /data") >= 0) {
+      client.println("HTTP/1.1 200 OK");
+      client.println("Content-Type: text/html");
+      client.println("Connection: close");
+      client.println();
+      client.print(tableRows);
+      return;
+    }
+
+    // === Main page ===
+    client.println("HTTP/1.1 200 OK");
+    client.println("Content-Type: text/html");
+    client.println("Connection: close");
+    client.println();
+
+    client.println("<!DOCTYPE html><html><head><title>Obstacle Detector</title>");
+    client.println("<meta name='viewport' content='width=device-width, initial-scale=1'>");
+    client.println("<style>");
+    client.println("body{font-family:Arial;text-align:center;}");
+    client.println("table{border-collapse:collapse;width:90%;margin:auto;}");
+    client.println("th,td{border:1px solid black;padding:8px;text-align:center;}");
+    client.println("th{background:#4CAF50;color:white;}");
+    client.println("</style></head><body>");
+    client.println("<h2>Obstacle Detector (20 cm Range)</h2>");
+    client.println("<table><tr><th>S.No</th><th>Time</th><th>Distance</th><th>Object</th></tr>");
+    client.println("<tbody id='tableData'>" + tableRows + "</tbody></table>");
+
+    // Auto-refresh via JavaScript (AJAX)
+    client.println("<script>");
+    client.println("setInterval(()=>{fetch('/data').then(r=>r.text()).then(t=>{document.getElementById('tableData').innerHTML=t;});},2000);");
+    client.println("</script>");
+
+    client.println("</body></html>");
+  }
+}
