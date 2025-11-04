@@ -1,0 +1,84 @@
+include <ESP8266WiFi.h>
+
+const char* ssid     = "Divyasree";     // 🔹 Change to your WiFi SSID
+const char* password = "lavadivya"; // 🔹 Change to your WiFi password
+
+#define SENSOR_PIN A0     // Soil sensor AO pin → A0
+#define BUZZER_PIN D6     // Buzzer pin → D6
+
+WiFiServer server(80);
+
+// Store readings as HTML rows
+String tableRows = "";
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, LOW);
+
+  // Connect WiFi
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected!");
+  Serial.print("ESP8266 IP: ");
+  Serial.println(WiFi.localIP());
+
+  server.begin();
+}
+
+void loop() {
+  // Take a new reading every 1 second
+  static unsigned long lastRead = 0;
+  if (millis() - lastRead >= 1000) {
+    lastRead = millis();
+
+    int sensorValue = analogRead(SENSOR_PIN);
+    String moistureStatus;
+
+    if (sensorValue > 700) {
+      moistureStatus = "Dry - Water Needed!";
+      digitalWrite(BUZZER_PIN, HIGH);
+    } else {
+      moistureStatus = " Moist - OK";
+      digitalWrite(BUZZER_PIN, LOW);
+    }
+
+    // Add new row to table
+    tableRows += "<tr><td>" + String(sensorValue) + "</td><td>" + moistureStatus + "</td></tr>";
+
+    Serial.println("Soil Moisture: " + String(sensorValue) + " → " + moistureStatus);
+  }
+
+  // Handle web clients
+  WiFiClient client = server.available();
+  if (!client) return;
+  while (!client.available()) delay(1);
+
+  // Build HTML response
+  String html = "<!DOCTYPE html><html>";
+  html += "<head><meta http-equiv='refresh' content='1'/>"; // Auto-refresh every 1 sec
+  html += "<title>Soil Moisture Log</title>";
+  html += "<style>";
+  html += "table {border-collapse: collapse; width: 70%; margin: auto;}";
+  html += "th, td {border: 1px solid black; padding: 6px; text-align: center;}";
+  html += "th {background-color: #f2f2f2;}";
+  html += "h2 {text-align: center;}";
+  html += "</style></head><body>";
+  html += "<h2>Soil Moisture Continuous Log</h2>";
+  html += "<table><tr><th>Moisture Value</th><th>Status</th></tr>";
+  html += tableRows;
+  html += "</table></body></html>";
+
+  // Send to browser
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-type:text/html");
+  client.println();
+  client.println(html);
+  client.println();
+}
+
+
