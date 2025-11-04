@@ -1,0 +1,96 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <DHT.h>
+
+const char* ssid = "Divya sree";      
+const char* password = "lavadivya"; 
+
+ESP8266WebServer server(80);
+
+#define DHTPIN D4
+#define DHTTYPE DHT22
+DHT dht(DHTPIN, DHTTYPE);
+
+#define LDR A0
+#define BUZZER D5
+
+// Store last 20 readings
+const int MAX_RECORDS = 20;
+String records[MAX_RECORDS];
+int recordIndex = 0;
+
+String irrigationStatus = "OFF";
+
+void addRecord(float temp, float hum, int ldrValue, String lightState, String irrigation) {
+  String row = "<tr><td>" + String(temp) + "</td><td>" + String(hum) + "</td><td>" +
+               String(ldrValue) + "</td><td>" + lightState + "</td><td>" + irrigation + "</td></tr>";
+  records[recordIndex] = row;
+  recordIndex = (recordIndex + 1) % MAX_RECORDS;  // circular buffer
+}
+
+void handleRoot() {
+  float temp = dht.readTemperature();
+  float hum = dht.readHumidity();
+  int ldrValue = analogRead(LDR);
+
+  // Detect day/night
+  String lightState;
+  if (ldrValue < 700) lightState = " Day (" + String(ldrValue) + ")";
+  else lightState = " Night (" + String(ldrValue) + ")";
+
+  // Simple irrigation condition
+  if (ldrValue < 700 && temp > 25 && hum < 70) {  
+    digitalWrite(BUZZER, HIGH);
+    irrigationStatus = "ON (Conditions Met)";
+  } else {
+    digitalWrite(BUZZER, LOW);
+    irrigationStatus = "OFF";
+  }
+
+  // Add this record to log
+  addRecord(temp, hum, ldrValue, lightState, irrigationStatus);
+
+  // Web page
+  String html = "<html><head><meta http-equiv='refresh' content='1'/>"
+                "<style>table{border-collapse:collapse;width:95%;font-size:16px}"
+                "td,th{border:1px solid black;padding:6px;text-align:center}</style>"
+                "</head><body>";
+  html += "<h2> Smart Irrigation Continuous Log</h2>";
+  html += "<table>";
+  html += "<tr><th>Temperature (°C)</th><th>Humidity (%)</th><th>LDR Value</th><th>Light</th><th>Irrigation</th></tr>";
+
+  // Print records (oldest to newest)
+  for (int i = 0; i < MAX_RECORDS; i++) {
+    int idx = (recordIndex + i) % MAX_RECORDS;
+    if (records[idx] != "") html += records[idx];
+  }
+
+  html += "</table>";
+  html += "</body></html>";
+
+  server.send(200, "text/html", html);
+}
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.begin(ssid, password);
+  pinMode(BUZZER, OUTPUT);
+  digitalWrite(BUZZER, LOW);
+  dht.begin();
+
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConnected!");
+  Serial.print("ESP8266 IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  server.on("/", handleRoot);
+  server.begin();
+}
+
+void loop() {
+  server.handleClient();
+}
