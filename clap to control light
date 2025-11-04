@@ -1,0 +1,86 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+
+#define SOUND_SENSOR D6   // DO pin of sound sensor
+#define LED_PIN      D5   // LED pin
+
+bool ledState = false;
+unsigned long lastClapTime = 0;
+const int debounceDelay = 400; // ms
+
+const char* ssid = "Divyasree";
+const char* password = "lavadivya";
+
+ESP8266WebServer server(80);
+
+void handleRoot() {
+  String html = "<html><head><title>Clap Switch Web Server</title>";
+  html += "<meta http-equiv='refresh' content='1' />";
+  html += "<style>";
+  html += "table {border-collapse: collapse; width: 50%; margin: auto; font-size: 20px;}";
+  html += "th, td {border: 1px solid black; padding: 10px; text-align: center;}";
+  html += "h2 {text-align:center;}";
+  html += "button {padding: 10px 20px; font-size: 18px;}";
+  html += "</style></head><body>";
+
+  html += "<h2>CLAP SWITCH STATUS</h2>";
+  html += "<table>";
+  html += "<tr><th>Parameter</th><th>Value</th></tr>";
+  html += "<tr><td>Sound Detected</td><td>" + String(digitalRead(SOUND_SENSOR) == HIGH ? "YES" : "NO") + "</td></tr>";
+  html += "<tr><td>LED State</td><td>" + String(ledState ? "ON" : "OFF") + "</td></tr>";
+  html += "</table><br><br>";
+
+  html += "<div style='text-align:center;'>";
+  html += "<a href='/toggle'><button>Toggle LED</button></a>";
+  html += "</div></body></html>";
+
+  server.send(200, "text/html", html);
+}
+
+void handleToggle() {
+  ledState = !ledState;
+  digitalWrite(LED_PIN, ledState);
+  server.sendHeader("Location", "/");
+  server.send(303);
+}
+
+void setup() {
+  pinMode(SOUND_SENSOR, INPUT);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+
+  Serial.begin(115200);
+
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nConnected!");
+  Serial.print("Web Server IP: ");
+  Serial.println(WiFi.localIP());
+
+  server.on("/", handleRoot);
+  server.on("/toggle", handleToggle);
+  server.begin();
+}
+
+void loop() {
+  server.handleClient();
+
+  int soundDetected = digitalRead(SOUND_SENSOR);
+
+  if (soundDetected == HIGH) {
+    unsigned long now = millis();
+    if (now - lastClapTime > debounceDelay) {
+      ledState = !ledState;
+      digitalWrite(LED_PIN, ledState);
+      Serial.print("Clap detected! LED is now ");
+      Serial.println(ledState ? "ON" : "OFF");
+      lastClapTime = now;
+    }
+  }
+}
