@@ -1,0 +1,128 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include "DHT.h"
+
+// ====== USER CONFIG ======
+const char* ssid = "Divya sree";
+const char* password = "lavadivya";
+// =========================
+
+#define DHTPIN D4          // DHT22 data pin (GPIO2)
+#define DHTTYPE DHT22
+DHT dht(DHTPIN, DHTTYPE);
+
+ESP8266WebServer server(80);
+
+const int LDR_PIN = A0; // LDR on Analog pin
+
+// Convert ADC (0-1023) to percent (0-100)
+int adcToPercent(int adc) {
+  if (adc < 0) adc = 0;
+  if (adc > 1023) adc = 1023;
+  return map(adc, 0, 1023, 0, 100);
+}
+
+// Return text description
+const char* lightLevelText(int pct) {
+  if (pct <= 33) return "Low";
+  if (pct <= 66) return "Medium";
+  return "High";
+}
+
+void handleRoot() {
+  String page = R"rawliteral(
+  <!doctype html>
+  <html>
+  <head>
+    <meta charset="utf-8">
+    <title>ESP8266 Weather Station</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { font-family: Arial, sans-serif; margin:20px; }
+      h2 { margin-bottom: 10px; }
+      table { border-collapse: collapse; width: 300px; }
+      th, td { border:1px solid #999; padding:8px; text-align:left; }
+      th { background:#f2f2f2; }
+    </style>
+  </head>
+  <body>
+    <h2>ESP8266 Weather Station</h2>
+    <p>DHT22 + LDR — auto updates every 1s</p>
+    <table>
+      <tr><th>Parameter</th><th>Value</th></tr>
+      <tr><td> Temperature (°C)</td><td id="temp">-</td></tr>
+      <tr><td> Humidity (%)</td><td id="hum">-</td></tr>
+      <tr><td> Light (ADC)</td><td id="ldr_adc">-</td></tr>
+      <tr><td> Light (%)</td><td id="ldr_pct">-</td></tr>
+      <tr><td> Light Level</td><td id="ldr_level">-</td></tr>
+    </table>
+
+    <script>
+      async function fetchReadings(){
+        try {
+          const resp = await fetch('/readings');
+          const data = await resp.json();
+          document.getElementById('temp').textContent = data.temperature === null ? 'err' : data.temperature.toFixed(2);
+          document.getElementById('hum').textContent  = data.humidity === null ? 'err' : data.humidity.toFixed(2);
+          document.getElementById('ldr_adc').textContent = data.ldr_adc;
+          document.getElementById('ldr_pct').textContent = data.ldr_pct + " %";
+          document.getElementById('ldr_level').textContent = data.ldr_level;
+        } catch (e) {
+          console.log("Fetch error", e);
+        }
+      }
+      fetchReadings();
+      setInterval(fetchReadings, 1000);
+    </script>
+  </body>
+  </html>
+  )rawliteral";
+
+  server.send(200, "text/html", page);
+}
+
+void handleReadings() {
+  float t = dht.readTemperature();
+  float h = dht.readHumidity();
+
+  int adc = analogRead(LDR_PIN);
+  int pct = adcToPercent(adc);
+  const char* level = lightLevelText(pct);
+
+  String json = "{";
+  json += "\"temperature\":";
+  if (isnan(t)) json += "null"; else json += String(t, 2);
+  json += ",\"humidity\":";
+  if (isnan(h)) json += "null"; else json += String(h, 2);
+  json += ",\"ldr_adc\":" + String(adc);
+  json += ",\"ldr_pct\":" + String(pct);
+  json += ",\"ldr_level\":\"" + String(level) + "\"";
+  json += "}";
+
+  server.send(200, "application/json", json);
+}
+
+void setup() {
+  Serial.begin(115200);
+  dht.begin();
+
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi...");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected!");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  server.on("/", handleRoot);
+  server.on("/readings", handleReadings);
+
+  server.begin();
+  Serial.println("HTTP server started");
+}
+
+void loop() {
+  server.handleClient();
+}
