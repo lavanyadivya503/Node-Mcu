@@ -1,7 +1,7 @@
 #include <ESP8266WiFi.h>
 
-const char* ssid = "sivagnanam";     
-const char* password = "btsarmy1516"; 
+const char* ssid = "Divyasree";     
+const char* password = "lavadivya"; 
 
 WiFiServer server(80);
 
@@ -19,6 +19,7 @@ void setup() {
 
   WiFi.begin(ssid, password);
 
+  // Wait for connection
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
@@ -38,64 +39,68 @@ void loop() {
 
   int sensorValue = analogRead(MQ135_PIN);
 
-  float co = sensorValue * 0.1;
-  float co2 = sensorValue * 0.12;
-  float no2 = sensorValue * 0.08;
+  // Convert sensor value to gas levels (simulated)
+  float co  = sensorValue * 0.1;   // CO in ppm
+  float co2 = sensorValue * 0.12;  // CO2 in ppm
+  float no2 = sensorValue * 0.08;  // NO2 in ppm
 
-  // Debug in Serial
-  Serial.print("CO: "); Serial.print(co);
+  // Debug info on Serial
+  Serial.print("CO: ");  Serial.print(co);
   Serial.print(" ppm | CO2: "); Serial.print(co2);
   Serial.print(" ppm | NO2: "); Serial.println(no2);
 
-  if (sensorValue > 400) digitalWrite(LED_PIN, HIGH);
-  else digitalWrite(LED_PIN, LOW);
+  // LED alert condition (linked to same logic as table)
+  bool isHigh = (co > 400 || co2 > 400 || no2 > 400);
+  digitalWrite(LED_PIN, isHigh ? HIGH : LOW);
 
   if (client) {
     String html = "<!DOCTYPE html><html><head>";
-    html += "<meta http-equiv='refresh' content='1'>"; // Auto refresh every 1s
+    html += "<meta http-equiv='refresh' content='2'>"; // Auto refresh every 2 sec
+    html += "<title>Vehicle Gas Monitoring</title>";
     html += "<style>";
-    html += "body{font-family:Arial;text-align:center;}";
-    html += "table{margin:20px auto;border:2px solid black;border-collapse:collapse;width:300px;}";
-    html += "th,td{border:1px solid black;padding:10px;font-size:18px;}";
-    html += "th{background:#f2f2f2;}";
-    html += ".high{background:#ff4d4d;color:white;}";  // 🚨 red warning
-    html += ".normal{background:#d4edda;color:#155724;}"; // ✅ green normal
+    html += "body{font-family:Arial;background:#f5f5f5;text-align:center;}";
+    html += "h2{color:#333;margin-top:20px;}";
+    html += "table{margin:20px auto;border:2px solid #333;border-collapse:collapse;width:400px;}";
+    html += "th,td{border:1px solid #333;padding:10px;font-size:18px;}";
+    html += "th{background:#333;color:white;}";
+    html += ".high{background:#ff4d4d;color:white;font-weight:bold;}";
+    html += ".normal{background:#d4edda;color:#155724;font-weight:bold;}";
     html += "</style></head><body>";
 
     html += "<h2>🚗 Vehicle Gas Monitoring System</h2>";
-
-    // CO Table
     html += "<table>";
-    html += "<tr><th colspan='2'>Carbon Monoxide (CO)</th></tr>";
-    html += "<tr><td>Value</td><td";
-    if (co > 400) html += " class='high'>"; else html += " class='normal'>";
-    html += String(co) + " ppm</td></tr></table>";
+    html += "<tr><th>Gas Type</th><th>Value (ppm)</th><th>Status</th></tr>";
 
-    // CO2 Table
-    html += "<table>";
-    html += "<tr><th colspan='2'>Carbon Dioxide (CO2)</th></tr>";
-    html += "<tr><td>Value</td><td";
-    if (co2 > 400) html += " class='high'>"; else html += " class='normal'>";
-    html += String(co2) + " ppm</td></tr></table>";
+    // CO
+    html += "<tr><td>Carbon Monoxide (CO)</td><td>" + String(co) + "</td><td class='";
+    html += (co > 400) ? "high'>⚠️ HIGH" : "normal'>✅ NORMAL";
+    html += "</td></tr>";
 
-    // NO2 Table
-    html += "<table>";
-    html += "<tr><th colspan='2'>Nitrogen Dioxide (NO2)</th></tr>";
-    html += "<tr><td>Value</td><td";
-    if (no2 > 400) html += " class='high'>"; else html += " class='normal'>";
-    html += String(no2) + " ppm</td></tr></table>";
+    // CO2
+    html += "<tr><td>Carbon Dioxide (CO₂)</td><td>" + String(co2) + "</td><td class='";
+    html += (co2 > 400) ? "high'>⚠️ HIGH" : "normal'>✅ NORMAL";
+    html += "</td></tr>";
 
-    // Status Table
-    html += "<table>";
-    html += "<tr><th>Status</th><td";
-    if (sensorValue > 400) html += " class='high'>⚠️ HIGH</td></tr>";
-    else html += " class='normal'>✅ NORMAL</td></tr>";
-    html += "</table>";
+    // NO2
+    html += "<tr><td>Nitrogen Dioxide (NO₂)</td><td>" + String(no2) + "</td><td class='";
+    html += (no2 > 400) ? "high'>⚠️ HIGH" : "normal'>✅ NORMAL";
+    html += "</td></tr>";
+
+    // Overall system status
+    html += "<tr><th colspan='2'>System Status</th><td class='";
+    html += (isHigh) ? "high'>⚠️ ALERT" : "normal'>✅ SAFE";
+    html += "</td></tr></table>";
+
+    html += "<p><small>Page updates automatically every 2 seconds</small></p>";
 
     html += "</body></html>";
 
+    // Send response to browser
     client.print("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n");
     client.print(html);
     client.stop();
   }
+
+  delay(200);
 }
+
