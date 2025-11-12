@@ -1,87 +1,23 @@
 #include <ESP8266WiFi.h>
-#include <ESP8266WebServer.h>
 
-#define SOIL_PIN A0
-#define RELAY_PIN D1
+// 🌐 Wi-Fi Credentials
+const char* ssid = "Divyasree";
+const char* password = "lavadivya";
 
-// Your Wi-Fi details
-const char* ssid = "YOUR_WIFI_NAME";
-const char* password = "YOUR_WIFI_PASSWORD";
+// ⚙️ Pin Configuration
+const int soilSensorPin = A0;   // Soil moisture analog input
+const int relayPin = D1;        // Relay control pin
 
-ESP8266WebServer server(80);
-
-// Thresholds
-const int NO_PROBE_VALUE = 950;
-const int DRY_THRESHOLD = 25;
-const int WET_THRESHOLD = 60;
-
-String motorStatus = "OFF";
-
-void handleRoot() {
-  int sensorValue = analogRead(SOIL_PIN);
-  int moisturePercent = map(sensorValue, 1023, 0, 0, 100);
-
-  String soilStatus;
-
-  if (sensorValue > NO_PROBE_VALUE) {
-    soilStatus = "No Soil Detected";
-    digitalWrite(RELAY_PIN, LOW);
-    motorStatus = "OFF";
-  } else if (moisturePercent < DRY_THRESHOLD) {
-    soilStatus = "Dry";
-    digitalWrite(RELAY_PIN, HIGH);
-    motorStatus = "ON";
-  } else if (moisturePercent < WET_THRESHOLD) {
-    soilStatus = "Moist";
-    digitalWrite(RELAY_PIN, LOW);
-    motorStatus = "OFF";
-  } else {
-    soilStatus = "Wet";
-    digitalWrite(RELAY_PIN, LOW);
-    motorStatus = "OFF";
-  }
-
-  // ---------- HTML PAGE ----------
-  String page = "<!DOCTYPE html><html><head>";
-  page += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
-  page += "<title>Smart Irrigation</title>";
-  page += "<style>";
-  page += "body{font-family:Arial;background:#E3F2FD;padding:20px;}";
-  page += "table{width:100%;border-collapse:collapse;font-size:20px;}";
-  page += "th,td{border:1px solid #000;padding:12px;text-align:center;}";
-  page += "th{background:#0288D1;color:white;}";
-  page += "td{background:white;}";
-  page += ".statusOn{color:green;font-weight:bold;}";
-  page += ".statusOff{color:red;font-weight:bold;}";
-  page += "</style></head><body>";
-
-  page += "<h2>🌱 Smart Irrigation System</h2>";
-  page += "<table>";
-  page += "<tr><th>Parameter</th><th>Value</th></tr>";
-  page += "<tr><td>Raw Soil Value</td><td>" + String(sensorValue) + "</td></tr>";
-  page += "<tr><td>Moisture (%)</td><td>" + String(moisturePercent) + "%</td></tr>";
-  page += "<tr><td>Soil Condition</td><td>" + soilStatus + "</td></tr>";
-
-  if (motorStatus == "ON")
-    page += "<tr><td>Motor Status</td><td class='statusOn'>ON 💧</td></tr>";
-  else
-    page += "<tr><td>Motor Status</td><td class='statusOff'>OFF</td></tr>";
-
-  page += "</table><br>";
-
-  page += "<p>Page Auto Refreshes Every 3 Seconds</p>";
-  page += "<meta http-equiv='refresh' content='3' />";
-  page += "</body></html>";
-
-  server.send(200, "text/html", page);
-}
+// 💧 Moisture Threshold
+const int threshold = 400;      // Adjust based on your sensor (0–1023)
+WiFiServer server(80);
 
 void setup() {
   Serial.begin(115200);
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);
+  pinMode(relayPin, OUTPUT);
+  digitalWrite(relayPin, HIGH); // Keep pump OFF initially (active LOW relay)
 
-  Serial.println("\nConnecting to WiFi...");
+  Serial.println("Connecting to WiFi...");
   WiFi.begin(ssid, password);
 
   while (WiFi.status() != WL_CONNECTED) {
@@ -90,14 +26,55 @@ void setup() {
   }
 
   Serial.println("\n✅ WiFi Connected!");
-  Serial.print("IP Address: ");
+  Serial.print("📶 IP Address: ");
   Serial.println(WiFi.localIP());
 
-  server.on("/", handleRoot);
   server.begin();
-  Serial.println("🌐 Web Server Started...");
 }
 
 void loop() {
-  server.handleClient();
+  int sensorValue = analogRead(soilSensorPin);
+  String pumpStatus;
+
+  if (sensorValue > threshold) {
+    digitalWrite(relayPin, HIGH); // Turn OFF pump
+    pumpStatus = "OFF";
+  } else {
+    digitalWrite(relayPin, LOW);  // Turn ON pump
+    pumpStatus = "ON";
+  }
+
+  WiFiClient client = server.available();
+  if (client) {
+    String request = client.readStringUntil('\r');
+    client.flush();
+
+    // 🌐 HTML Webpage
+    String html = "<!DOCTYPE html><html><head><meta http-equiv='refresh' content='3'>";
+    html += "<title>Smart Irrigation System</title>";
+    html += "<style>";
+    html += "body { font-family: Arial; background-color:#e8f5e9; text-align:center; }";
+    html += "table { margin:auto; border-collapse: collapse; width:60%; }";
+    html += "th, td { border:1px solid #4CAF50; padding:12px; }";
+    html += "th { background:#4CAF50; color:white; }";
+    html += "</style></head><body>";
+    html += "<h2>🌱 Smart Irrigation Monitoring</h2>";
+    html += "<table>";
+    html += "<tr><th>Parameter</th><th>Value</th></tr>";
+    html += "<tr><td>Soil Moisture (0–1023)</td><td>" + String(sensorValue) + "</td></tr>";
+    html += "<tr><td>Pump Status</td><td><b>" + pumpStatus + "</b></td></tr>";
+    html += "</table><br>";
+    html += "<p>Threshold Value: " + String(threshold) + "</p>";
+    html += "<p>Page refreshes every 3 seconds</p>";
+    html += "</body></html>";
+
+    client.println("HTTP/1.1 200 OK");
+    client.println("Content-Type: text/html");
+    client.println("Connection: close");
+    client.println();
+    client.println(html);
+    client.stop();
+  }
+
+  delay(1000);
 }
