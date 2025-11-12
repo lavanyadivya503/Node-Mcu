@@ -1,103 +1,129 @@
+
 #include <ESP8266WiFi.h>
 
-// 🏠 WiFi Credentials
-const char* ssid = "Your_WiFi_Name";
-const char* password = "Your_WiFi_Password";
+// 🏠 Wi-Fi credentials
+const char* ssid = "Divyasree";
+const char* password = "lavadivya";
 
-// 🌍 Start web server on port 80
+// 🌐 Web server on port 80
 WiFiServer server(80);
 
-// 🔌 Pin configuration
+// ⚙️ Pin setup
 const int trigPin = D1;
 const int echoPin = D2;
-const int waterPin = A0;
-const int alertPin = D5;
+const int redLED = D5;
+const int yellowLED = D6;
+const int greenLED = D7;
+const int buzzer = D8;
 
-// ⚙️ Variables
-long duration;
-float distance;
-int waterValue;
+// 🚰 Tank details
+const int tankHeight = 20; // Full height in cm
+const int numReadings = 5;
 
-// Set your tank distance limits (in cm)
-int fullLevel = 10;     // Distance when tank is full
-int emptyLevel = 30;    // Distance when tank is empty
-int waterThreshold = 500;  // Adjust for water sensor sensitivity
-
-void setup() {
-  Serial.begin(115200);
-  pinMode(trigPin, OUTPUT);
-  pinMode(echoPin, INPUT);
-  pinMode(alertPin, OUTPUT);
-  pinMode(waterPin, INPUT);
-
-  // Connect to WiFi
-  Serial.println("Connecting to WiFi...");
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("\nWiFi connected!");
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP());
-
-  server.begin();
-}
-
-void loop() {
-  // Measure ultrasonic distance
+long readDistance() {
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
   digitalWrite(trigPin, HIGH);
   delayMicroseconds(10);
   digitalWrite(trigPin, LOW);
-  duration = pulseIn(echoPin, HIGH);
-  distance = duration * 0.034 / 2; // Convert to cm
+  long duration = pulseIn(echoPin, HIGH);
+  long distance = duration * 0.034 / 2;
+  return distance;
+}
 
-  // Read water sensor
-  waterValue = analogRead(waterPin);
+void setup() {
+  Serial.begin(115200);
+  delay(10);
 
-  // Determine alert condition
-  bool waterDetected = (waterValue > waterThreshold);
-  bool tankFull = (distance <= fullLevel);
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+  pinMode(redLED, OUTPUT);
+  pinMode(yellowLED, OUTPUT);
+  pinMode(greenLED, OUTPUT);
+  pinMode(buzzer, OUTPUT);
 
-  if (tankFull || waterDetected) {
-    digitalWrite(alertPin, HIGH);
-  } else {
-    digitalWrite(alertPin, LOW);
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
   }
 
-  // Serve webpage
+  Serial.println("");
+  Serial.println("WiFi connected ✅");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  server.begin();
+  Serial.println("Server started 🚀");
+}
+
+void loop() {
+  // 📏 Measure average distance
+  long totalDistance = 0;
+  for (int i = 0; i < numReadings; i++) {
+    totalDistance += readDistance();
+    delay(50);
+  }
+  int distance = totalDistance / numReadings;
+  int waterLevel = tankHeight - distance;
+  if (waterLevel < 0) waterLevel = 0;
+  if (waterLevel > tankHeight) waterLevel = tankHeight;
+
+  String status;
+
+  // 🧠 New LED Logic
+  if (waterLevel < 5) {  // Tank almost empty
+    digitalWrite(redLED, HIGH);
+    digitalWrite(yellowLED, LOW);
+    digitalWrite(greenLED, LOW);
+    digitalWrite(buzzer, HIGH);
+    status = "LOW (EMPTY)";
+  } 
+  else if (waterLevel < 16) {  // Half full
+    digitalWrite(redLED, LOW);
+    digitalWrite(yellowLED, HIGH);
+    digitalWrite(greenLED, LOW);
+    digitalWrite(buzzer, LOW);
+    status = "MEDIUM (HALF FULL)";
+  } 
+  else {  // Full
+    digitalWrite(redLED, LOW);
+    digitalWrite(yellowLED, LOW);
+    digitalWrite(greenLED, HIGH);
+    digitalWrite(buzzer, LOW);
+    status = "FULL (TANK COMPLETE)";
+  }
+
+  // 🌐 Web page
   WiFiClient client = server.available();
-  if (!client) return;
-  while (!client.available()) delay(1);
+  if (client) {
+    String request = client.readStringUntil('\r');
+    client.flush();
 
-  client.println("HTTP/1.1 200 OK");
-  client.println("Content-Type: text/html");
-  client.println("Connection: close");
-  client.println();
-  client.println("<!DOCTYPE html>");
-  client.println("<html>");
-  client.println("<head><title>Smart Water Level Monitor</title>");
-  client.println("<meta http-equiv='refresh' content='3'/>");
-  client.println("<style>");
-  client.println("body{font-family:Arial;text-align:center;background:#f0f8ff;}");
-  client.println("h1{color:#0077cc;} .box{margin:auto;width:50%;padding:20px;border-radius:15px;background:white;box-shadow:0px 0px 10px #ccc;}");
-  client.println("</style></head>");
-  client.println("<body><div class='box'>");
-  client.println("<h1> Smart Water Level Monitor</h1>");
-  client.print("<p><b>Distance:</b> "); client.print(distance); client.println(" cm</p>");
-  client.print("<p><b>Water Sensor Value:</b> "); client.print(waterValue); client.println("</p>");
-  
-  if (tankFull) {
-    client.println("<p style='color:red;font-size:20px;'>Tank is FULL!</p>");
-  } else if (waterDetected) {
-    client.println("<p style='color:orange;font-size:20px;'> Water detected on surface!</p>");
-  } else {
-    client.println("<p style='color:green;font-size:20px;'>✅ Normal Condition</p>");
+    String html = "<!DOCTYPE html><html><head><title>ESP8266 Water Level</title>"
+                  "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+                  "<style>body{font-family:Arial;text-align:center;background:#e3f2fd;}"
+                  "table{margin:auto;border-collapse:collapse;width:60%;font-size:20px;}"
+                  "th,td{padding:12px;border:1px solid #0277bd;}"
+                  "th{background:#0288d1;color:white;}</style></head><body>"
+                  "<h2>💧 ESP8266 Water Level Monitoring System</h2>"
+                  "<table><tr><th>Parameter</th><th>Value</th></tr>"
+                  "<tr><td>Water Level (cm)</td><td>" + String(waterLevel) + "</td></tr>"
+                  "<tr><td>Status</td><td>" + status + "</td></tr>"
+                  "<tr><td>Tank Height (cm)</td><td>" + String(tankHeight) + "</td></tr>"
+                  "</table><p>LED and buzzer updated automatically.</p></body></html>";
+
+    client.println("HTTP/1.1 200 OK");
+    client.println("Content-Type: text/html");
+    client.println("Connection: close");
+    client.println();
+    client.println(html);
+    client.stop();
   }
-  
-  client.println("</div></body></html>");
-  client.stop();
-  delay(100);
+
+  delay(1000);
 }
