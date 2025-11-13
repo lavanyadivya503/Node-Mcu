@@ -1,76 +1,109 @@
-#include <ESP8266WiFi.>
-const char* ssid = "Divyalava";
+#include <ESP8266WiFi.h>
+
+// ⚙️ WiFi Credentials (change these)
+const char* ssid = "Divyasree";
 const char* password = "lavadivya";
-int ldrPin = A0;     // LDR connected to analog pin A0
-int ledPin = D2;     // LED connected to digital pin D2
-WiFiServer server(80); // Web server runs on port 80
+
+// 🌍 Web server on port 80
+WiFiServer server(80);
+
+// 🔌 Pin setup
+const int ldrPin = A0;
+const int led1 = D1;
+const int led2 = D2;
+const int led3 = D5;
+const int led4 = D6;
+
+int ldrValue = 0;
+const int threshold = 500;  // Adjust this based on light condition
+bool ledState = false;
+
 void setup() {
   Serial.begin(115200);
- pinMode(ledPin, OUTPUT);
- // Connect to WiFi
   Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, password);
+  Serial.println(" LDR Auto LED Web Server Starting...");
 
+  pinMode(led1, OUTPUT);
+  pinMode(led2, OUTPUT);
+  pinMode(led3, OUTPUT);
+  pinMode(led4, OUTPUT);
+
+  // 🧭 Connect to WiFi
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
 
-  Serial.println("");
-  Serial.println("WiFi connected.");
-  Serial.print("IP Address: ");
-  Serial.println(WiFi.localIP());  // Print assigned IP
+  Serial.println("\n✅ Connected!");
+  Serial.print("🌍 IP Address: ");
+  Serial.println(WiFi.localIP());
 
-  // Start the server
   server.begin();
 }
 
 void loop() {
-  WiFiClient client = server.available(); // Listen for incoming clients
+  WiFiClient client = server.available();
+  if (!client) return;
 
-  if (!client) {
-    return;
-  }
+  while (!client.available()) delay(1);
 
-  // Wait until client sends data
-  while (!client.available()) {
-    delay(1);
-  }
-
-  // Read request
   String request = client.readStringUntil('\r');
   client.flush();
 
-  // LDR value
-  int ldrValue = analogRead(ldrPin);
-  String ledState = "";
+  // 📥 Read LDR Value
+  ldrValue = analogRead(ldrPin);
 
-  // Check if browser request contains ON or OFF
-  if (request.indexOf("/LED=ON") != -1) {
-    digitalWrite(ledPin, HIGH);
-    ledState = "ON";
-  } else if (request.indexOf("/LED=OFF") != -1) {
-    digitalWrite(ledPin, LOW);
-    ledState = "OFF";
+  // 🌙 Auto LED Logic
+  if (ldrValue < threshold) {
+    ledState = true;
   } else {
-    ledState = (digitalRead(ledPin) == HIGH) ? "ON" : "OFF";
+    ledState = false;
   }
 
-  // Send response (HTML page)
+  // Apply LED state
+  digitalWrite(led1, ledState);
+  digitalWrite(led2, ledState);
+  digitalWrite(led3, ledState);
+  digitalWrite(led4, ledState);
+
+  // 🌐 Send HTML Response
   client.println("HTTP/1.1 200 OK");
   client.println("Content-Type: text/html");
   client.println("Connection: close");
   client.println();
-  client.println("<!DOCTYPE HTML>");
-  client.println("<html>");
-  client.println("<h2> NodeMCU LDR Web Server</h2>");
-  client.println("<p>LDR Value: " + String(ldrValue) + "</p>");
-  client.println("<p>LED State: " + ledState + "</p>");
-  client.println("<a href=\"/LED=ON\"><button>Turn ON LED</button></a>");
-  client.println("<a href=\"/LED=OFF\"><button>Turn OFF LED</button></a>");
-  client.println("</html>");
+  client.println("<!DOCTYPE html><html>");
+  client.println("<head><meta name='viewport' content='width=device-width, initial-scale=1'>");
+  client.println("<title>LDR Auto LED Web Server</title>");
+  client.println("<style>");
+  client.println("body { font-family: Arial; text-align: center; background: #f4f4f4; }");
+  client.println("h2 { color: #222; }");
+  client.println("table { margin:auto; border-collapse: collapse; width: 60%; }");
+  client.println("th, td { border: 1px solid #999; padding: 10px; }");
+  client.println("th { background: #333; color: white; }");
+  client.println("td { background: white; }");
+  client.println("</style></head><body>");
+  
+  client.println("<h2> Automatic Night Light Web Server</h2>");
+  client.println("<p><b>WiFi IP:</b> " + WiFi.localIP().toString() + "</p>");
+  client.println("<table>");
+  client.println("<tr><th>Parameter</th><th>Value</th></tr>");
+  client.println("<tr><td>LDR Reading</td><td>" + String(ldrValue) + "</td></tr>");
+  client.println("<tr><td>Light Condition</td><td>" + String((ldrValue < threshold) ? "Dark" : "Bright") + "</td></tr>");
+  client.println("<tr><td>LED Status</td><td>" + String(ledState ? "ON " : "OFF ") + "</td></tr>");
+  client.println("</table>");
+  
+  client.println("<p style='margin-top:20px;'>Page refreshes automatically every 3 seconds.</p>");
+  client.println("<script>setTimeout(()=>{location.reload();},3000);</script>");
+  client.println("</body></html>");
 
-  delay(1);
+  client.stop();
+
+  // 🖥️ Serial monitor output
+  Serial.print("LDR: ");
+  Serial.print(ldrValue);
+  Serial.print(" | LEDs: ");
+  Serial.println(ledState ? "ON" : "OFF");
 }
+
